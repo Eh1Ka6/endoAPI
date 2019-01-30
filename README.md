@@ -7,9 +7,9 @@ Entry level web API for Endocode. Probably nothing surprising but still felt cre
 You must have a recent version of go installed. 
 This API is meant to run on docker. If you have'nt installed it yet take a look at :   
  
-```
+
 https://docs.docker.com/install/linux/docker-ce/debian/
-```
+
  
 ## Getting Started
 
@@ -25,7 +25,6 @@ Simply run make to run the tests and build the API
 
 ```
 make 
-
 ```
 
 ### Running the api 
@@ -34,7 +33,6 @@ The App take's a listening port as argument (default 8080) and allow you  to  de
 
 ```
 ./endoApi -p 8080 GOPATH=/GO
-
 ```
 ### Deployment on docker
 
