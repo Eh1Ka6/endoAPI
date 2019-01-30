@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net"
     "net/http"
     "net/url"
@@ -17,20 +18,24 @@ import (
     "errors"
     "os/signal"
        "syscall"
+      
 )
+// Version string compiled with -ldflags "-X=main.VersionString=`git rev-parse HEAD`"
 var VersionString = "unset"
+
+// We defined our logwritter to ovveride default log format
 type logWriter struct {
 	Request    *http.Request
 	URL        url.URL
 	TimeStamp  time.Time
 	StatusCode int
 	Size int
-	
 }
 func (writer logWriter) Write(bytes []byte) (int, error) {
-    return fmt.Print(time.Now().Format("2006-01-02 15:04:05") + string(bytes))
+    return fmt.Print(time.Now().Format("2006-01-02 15:04:05 ") + string(bytes))
 }
-// Split a world by it's uppercase 
+// Split a world by it's uppercase and add a space in between the splitted part
+// Returns the expected string "ABC" -> "A B C"
 func paramSplit(param string) string {
      var words string
      var l int
@@ -49,32 +54,38 @@ func paramSplit(param string) string {
         } 
      return words
 }
-func setPort(port *int) (*int,error) {
+// Check port flag and return port value if valid
+func setPort(port *int) (*int,net.Listener,error) {
 	
 	if (*port != 80) && ( *port < 1024 || *port > 65535 ) {
 		err := errors.New("port " + strconv.Itoa(*port) + " is out of range.")
-		return port,err
+		return port,nil,err
 	} else {
 		ln, err := net.Listen("tcp", ":" + strconv.Itoa(*port))
 		if err != nil {
 			err := errors.New("port " + strconv.Itoa(*port) + " already in use")
-			return port,err
+			if ln != nil { 
+			ln.Close()
+			}
+			return port,nil,err
 		}
-		ln.Close()
-		return  port,err 
+		return  port,ln,err 
 	}
 }
+// Check extra argument and set them  as env var if valid 
 func setEnv(env []string ) error{
 	
 	for i:=0; i < len(env);i++ {
 		parts := strings.Split(env[i], "=")
-		if (len(parts) > 2){
-			err := errors.New("Wrong env var declaration" + env[i])
+		if (len(parts) != 2){
+			err := errors.New("Wrong env var declaration " + env[i])
 			return err
 		} else {
 			err := os.Setenv(parts[0], parts[1])
 			if err != nil {
 				return  err
+			} else {
+				log.Print("Setting up  environnement var " + parts[0] +" to " + parts[1])
 			}
 		}
 	}
@@ -95,24 +106,24 @@ func setServer(port string,) (*http.Server){
 	}
 	return srv
 }
-// middleWare ...
+// middleWare ... Here we log access and errors, We can also set user info, auth, coockies...etc  
 func middleWare(handler http.Handler) http.Handler {
 	
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        // right not all this does is log like
-        // "github.com/gorilla/handlers"
+        // Right ! not all this does is log like  "github.com/gorilla/handlers"
 		if (r.URL.Path != "/helloworld" && r.URL.Path != "/version") {
-	        log.Printf(" 404 Not found %s %s",r.Method, r.URL)
+	        log.Printf("404 Not found %s %s",r.Method, r.URL)
 	        // Reference here a handler for a custom 404 page
 	        
 	    }else {
-			log.Printf(" 200 Ok %s %s",r.Method, r.URL)
+			log.Printf("200 Ok %s %s",r.Method, r.URL)
 		}
 
         handler.ServeHTTP(w, r)
     })
 }
-// Param Request handler 
+// Handle our helloworld page and it's potential args (name=)
+// The function sanitize the params before rewritting them  in  the body
 func paramHandler(w http.ResponseWriter, r *http.Request) {
 	
 	
@@ -129,25 +140,32 @@ func paramHandler(w http.ResponseWriter, r *http.Request) {
 	    return
     }
 }
+// Handle Version page
 func respondVersion(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "<h1>Version %s</h1>",VersionString)
 }
-func gracefullshutdown(){
+// Gracefull shutdown code
+func gracefullshutdown(srv *http.Server){
+	
 	var gracefulStop = make(chan os.Signal)
 	signal.Notify(gracefulStop, syscall.SIGTERM)
     signal.Notify(gracefulStop, syscall.SIGINT)
     go func() {
+		      
               sig := <-gracefulStop
               log.Printf("caught sig: %+v", sig)
-              log.Println("Wait for 2 second to finish processing")
-              time.Sleep(2*time.Second)
-              os.Exit(0)
+              ctx, cancel := context.WithTimeout(context.Background(), 30 * time.Second)
+              defer cancel()
+              err := srv.Shutdown(ctx)         
+              if err != nil {
+              	log.Print(" " + err.Error())
+              }
        }()
     
 }
-
+//Our Set the log output,parse arg line and  check  their validity ,set the server param 
+// And listen and serve on the defined port   
 func main() {
-	
 	log.SetFlags(0)
 	log.SetOutput(new(logWriter))
 	port := flag.Int("p", 8080, "port")
@@ -156,20 +174,19 @@ func main() {
 	if env != nil {
 		err := setEnv(env) 
 		if err != nil {
-			log.Print(env)
+			log.Print("wrong environnement variable! Cannot Parse:" + err.Error())
 		}
 	}
-	port,err := setPort(port)
+	port,ln,err := setPort(port)
 	if (err != nil) {
 		log.Fatal(err)
 	} else {
+		
 		srv := setServer(strconv.Itoa(*port))
-		gracefullshutdown()
-	    log.Fatal(srv.ListenAndServe())
+		gracefullshutdown(srv)
+		
+	    log.Fatal(srv.Serve(ln))
 	}
-	
-	
-	
 }
 
 

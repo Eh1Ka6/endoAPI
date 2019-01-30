@@ -12,4 +12,4 @@ clean:
 	$(GOCLEAN)
 	rm -f $(BINARY_NAME)
 docker-build:
-	docker run --rm -it -v "$(GOPATH)":/go -w /go/src golang:latest go build -o "$(BINARY_NAME)" -v ./...
+	docker run --rm -it -v $(PWD):/go -w /go golang:latest  go test && go build -ldflags "-X main.VersionString=`git rev-parse HEAD`"  -o "$(BINARY_NAME)" && ./EndoRestAPI
