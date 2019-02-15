@@ -1,6 +1,6 @@
 # EndoAPI
 
-Entry level web API for Endocode. Probably nothing surprising but still felt creative
+Entry level web API for Endocode. Probably nothing surprising but still fell creative
 
 ## Prerequisites
 
